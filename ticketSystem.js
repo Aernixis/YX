@@ -9,7 +9,23 @@ const {
 const config = require('./config');
 
 const creatingUsers = new Set();
-const ticketOwners = new Map();
+
+const MEMBER_PERMISSIONS = [
+  PermissionsBitField.Flags.ViewChannel,
+  PermissionsBitField.Flags.SendMessages,
+  PermissionsBitField.Flags.ReadMessageHistory,
+];
+
+function getTicketTypeFromChannel(channel) {
+  for (const type of Object.keys(config.ticketTypes)) {
+    if (channel.name.startsWith(`${type}-`)) return type;
+  }
+  return null;
+}
+
+function isStaff(member, typeConfig) {
+  return typeConfig.allowedRoleIds.some((roleId) => member.roles.cache.has(roleId));
+}
 
 function buildPanelRow(type) {
   return new ActionRowBuilder().addComponents(
@@ -20,31 +36,34 @@ function buildPanelRow(type) {
   );
 }
 
-function buildResolvedRow(type) {
+function buildTicketRow(type) {
+  const typeConfig = config.ticketTypes[type];
   const row = new ActionRowBuilder();
 
-  if (config.ticketTypes[type].grantsVerifiedRole) {
+  if (typeConfig.grantRoleId) {
     row.addComponents(
       new ButtonBuilder()
-        .setCustomId('ticket_grant_verified')
-        .setLabel('Grant Verified Role')
+        .setCustomId('ticket_grant')
+        .setLabel(typeConfig.grantLabel)
         .setStyle(ButtonStyle.Success)
-    );
-  } else {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId('ticket_close')
-        .setLabel('Close Ticket')
-        .setStyle(ButtonStyle.Secondary)
     );
   }
 
   row.addComponents(
     new ButtonBuilder()
-      .setCustomId('ticket_delete_channel')
-      .setLabel('Delete Channel')
-      .setStyle(ButtonStyle.Danger)
+      .setCustomId('ticket_close')
+      .setLabel('Close Ticket')
+      .setStyle(ButtonStyle.Secondary)
   );
+
+  if (typeConfig.showDelete) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId('ticket_delete_channel')
+        .setLabel('Delete Channel')
+        .setStyle(ButtonStyle.Danger)
+    );
+  }
 
   return row;
 }
@@ -53,7 +72,7 @@ async function sendTicketPanel(channel, type) {
   const typeConfig = config.ticketTypes[type];
   if (!typeConfig) return;
 
-  await channel.send({ content: config.panelGifUrl });
+  await channel.send({ content: typeConfig.gifUrl });
 
   const embed = new EmbedBuilder()
     .setTitle(`Open a ${typeConfig.label} Ticket`)
@@ -63,7 +82,7 @@ async function sendTicketPanel(channel, type) {
   await channel.send({ embeds: [embed], components: [buildPanelRow(type)] });
 }
 
-function buildTicketPermissionOverwrites(guild, userId) {
+function buildTicketPermissionOverwrites(guild, userId, typeConfig) {
   const overwrites = [
     {
       id: guild.roles.everyone.id,
@@ -71,22 +90,14 @@ function buildTicketPermissionOverwrites(guild, userId) {
     },
     {
       id: userId,
-      allow: [
-        PermissionsBitField.Flags.ViewChannel,
-        PermissionsBitField.Flags.SendMessages,
-        PermissionsBitField.Flags.ReadMessageHistory,
-      ],
+      allow: MEMBER_PERMISSIONS,
     },
   ];
 
-  for (const roleId of config.allowedRoleIds) {
+  for (const roleId of typeConfig.allowedRoleIds) {
     overwrites.push({
       id: roleId,
-      allow: [
-        PermissionsBitField.Flags.ViewChannel,
-        PermissionsBitField.Flags.SendMessages,
-        PermissionsBitField.Flags.ReadMessageHistory,
-      ],
+      allow: MEMBER_PERMISSIONS,
     });
   }
 
@@ -94,72 +105,92 @@ function buildTicketPermissionOverwrites(guild, userId) {
 }
 
 async function createTicketChannel(interaction, type) {
-  const { guild, user } = interaction;
   const typeConfig = config.ticketTypes[type];
+  if (!typeConfig) return;
+
+  const { guild, user } = interaction;
 
   if (creatingUsers.has(user.id)) {
-    return interaction.reply({ content: 'You already have a ticket being created.', ephemeral: true });
+    return interaction.reply({ content: 'Your ticket is already being created.', ephemeral: true });
   }
 
   creatingUsers.add(user.id);
 
   try {
+    await interaction.deferReply({ ephemeral: true });
+
     const channel = await guild.channels.create({
       name: `${type}-${user.username}`,
       type: ChannelType.GuildText,
       parent: config.ticketCategoryId,
-      permissionOverwrites: buildTicketPermissionOverwrites(guild, user.id),
+      topic: user.id,
+      permissionOverwrites: buildTicketPermissionOverwrites(guild, user.id, typeConfig),
     });
-
-    ticketOwners.set(channel.id, user.id);
 
     await channel.send({ content: `<@&${typeConfig.pingRoleId}>` });
 
     const welcomeEmbed = new EmbedBuilder()
       .setTitle(`${typeConfig.label} Ticket Opened`)
-      .setDescription('Please send a screenshot of your Roblox display name to continue.')
+      .setDescription(typeConfig.welcomeText)
       .setColor(typeConfig.color);
 
-    await channel.send({ embeds: [welcomeEmbed], components: [buildResolvedRow(type)] });
+    await channel.send({ embeds: [welcomeEmbed], components: [buildTicketRow(type)] });
 
-    await interaction.reply({ content: `Ticket created: ${channel}`, ephemeral: true });
+    await interaction.editReply({ content: `Ticket created: ${channel}` });
+  } catch (err) {
+    console.error(err);
+    await interaction.editReply({ content: 'Could not create the ticket.' }).catch(() => null);
   } finally {
     creatingUsers.delete(user.id);
   }
 }
 
-function getTicketTypeFromChannel(channel) {
-  for (const type of Object.keys(config.ticketTypes)) {
-    if (channel.name.startsWith(`${type}-`)) return type;
-  }
-  return null;
-}
+async function grantRole(interaction) {
+  const { guild, channel, member: clicker } = interaction;
+  const type = getTicketTypeFromChannel(channel);
+  const typeConfig = type ? config.ticketTypes[type] : null;
 
-async function grantVerifiedRole(interaction) {
-  const { guild, channel } = interaction;
-  const ownerId = ticketOwners.get(channel.id);
-
-  if (!ownerId) {
-    return interaction.reply({ content: 'Could not resolve the ticket owner.', ephemeral: true });
+  if (!typeConfig || !typeConfig.grantRoleId) {
+    return interaction.reply({ content: 'There is no role to grant in this ticket.', ephemeral: true });
   }
 
-  const member = await guild.members.fetch(ownerId);
-  await member.roles.add(config.verifiedRoleId);
+  if (!isStaff(clicker, typeConfig)) {
+    return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
+  }
+
+  const target = await guild.members.fetch(channel.topic).catch(() => null);
+
+  if (!target) {
+    return interaction.reply({ content: 'Could not find the ticket owner.', ephemeral: true });
+  }
+
+  try {
+    await target.roles.add(typeConfig.grantRoleId);
+  } catch (err) {
+    console.error(err);
+    return interaction.reply({ content: 'Could not grant the role. Check the bot role position.', ephemeral: true });
+  }
 
   const grantedEmbed = new EmbedBuilder()
-    .setTitle('Verified Role Granted')
-    .setDescription(`${member} has been given the verified role.`)
+    .setTitle('Role Granted')
+    .setDescription(`${target} has been given <@&${typeConfig.grantRoleId}>.`)
     .setColor(0x43B581);
 
   await interaction.reply({ embeds: [grantedEmbed] });
 }
 
-async function closeTicket(channel) {
+async function closeTicket(channel, type) {
+  const typeConfig = config.ticketTypes[type];
+
   await channel.permissionOverwrites.edit(channel.guild.roles.everyone, {
     SendMessages: false,
   });
 
-  for (const roleId of config.allowedRoleIds) {
+  if (channel.topic) {
+    await channel.permissionOverwrites.edit(channel.topic, { SendMessages: false }).catch(() => null);
+  }
+
+  for (const roleId of typeConfig.allowedRoleIds) {
     await channel.permissionOverwrites.edit(roleId, {
       SendMessages: false,
     });
@@ -168,40 +199,52 @@ async function closeTicket(channel) {
   await channel.setParent(config.archiveCategoryId, { lockPermissions: false });
 }
 
+async function closeTicketFromButton(interaction) {
+  const { channel } = interaction;
+  const type = getTicketTypeFromChannel(channel);
+
+  if (!type) {
+    return interaction.reply({ content: 'This is not a ticket channel.', ephemeral: true });
+  }
+
+  if (channel.parentId === config.archiveCategoryId) {
+    return interaction.reply({ content: 'This ticket is already archived.', ephemeral: true });
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  await closeTicket(channel, type);
+  await interaction.editReply({ content: 'Ticket closed and archived.' });
+}
+
 async function deleteTicketChannel(interaction) {
+  const type = getTicketTypeFromChannel(interaction.channel);
+  const typeConfig = type ? config.ticketTypes[type] : null;
+
+  if (!typeConfig) return;
+
+  if (!isStaff(interaction.member, typeConfig)) {
+    return interaction.reply({ content: 'Only staff can do this.', ephemeral: true });
+  }
+
   await interaction.reply({ content: 'Deleting channel...', ephemeral: true });
-  ticketOwners.delete(interaction.channel.id);
   await interaction.channel.delete();
 }
 
 async function handleTicketInteraction(interaction) {
   if (!interaction.isButton()) return;
 
-  if (interaction.customId.startsWith('ticket_create_')) {
-    const type = interaction.customId.replace('ticket_create_', '');
-    return createTicketChannel(interaction, type);
+  const id = interaction.customId;
+
+  if (id.startsWith('ticket_create_')) {
+    return createTicketChannel(interaction, id.replace('ticket_create_', ''));
   }
 
-  if (interaction.customId === 'ticket_grant_verified') {
-    return grantVerifiedRole(interaction);
-  }
-
-  if (interaction.customId === 'ticket_close') {
-    await closeTicket(interaction.channel);
-    return interaction.reply({ content: 'Ticket closed and archived.', ephemeral: true });
-  }
-
-  if (interaction.customId === 'ticket_delete_channel') {
-    return deleteTicketChannel(interaction);
-  }
+  if (id === 'ticket_grant') return grantRole(interaction);
+  if (id === 'ticket_close') return closeTicketFromButton(interaction);
+  if (id === 'ticket_delete_channel') return deleteTicketChannel(interaction);
 }
 
 module.exports = {
   sendTicketPanel,
   handleTicketInteraction,
-  closeTicket,
-  createTicketChannel,
-  grantVerifiedRole,
-  deleteTicketChannel,
-  getTicketTypeFromChannel,
 };
