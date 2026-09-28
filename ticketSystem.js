@@ -31,7 +31,7 @@ function buildPanelRow(type) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`ticket_create_${type}`)
-      .setLabel(`Open ${config.ticketTypes[type].label} Ticket`)
+      .setLabel(`Open ${config.ticketTypes[type].title}`)
       .setStyle(ButtonStyle.Primary)
   );
 }
@@ -72,10 +72,14 @@ async function sendTicketPanel(channel, type) {
   const typeConfig = config.ticketTypes[type];
   if (!typeConfig) return;
 
-  await channel.send({ content: typeConfig.gifUrl });
+  const gifEmbed = new EmbedBuilder()
+    .setColor(typeConfig.color)
+    .setImage(typeConfig.gifUrl);
+
+  await channel.send({ embeds: [gifEmbed] });
 
   const embed = new EmbedBuilder()
-    .setTitle(`Open a ${typeConfig.label} Ticket`)
+    .setTitle(typeConfig.title)
     .setDescription(typeConfig.description)
     .setColor(typeConfig.color);
 
@@ -130,7 +134,7 @@ async function createTicketChannel(interaction, type) {
     await channel.send({ content: `<@&${typeConfig.pingRoleId}>` });
 
     const welcomeEmbed = new EmbedBuilder()
-      .setTitle(`${typeConfig.label} Ticket Opened`)
+      .setTitle(`${typeConfig.title} Opened`)
       .setDescription(typeConfig.welcomeText)
       .setColor(typeConfig.color);
 
