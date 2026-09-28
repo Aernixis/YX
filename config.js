@@ -1,5 +1,5 @@
 module.exports = {
-  token: 'PASTE_YOUR_NEW_BOT_TOKEN_HERE',
+  token: 'MTU1Mzg2NzcwNTUyMDc1MDczNg.G6YkNm.ff0DFJM7c07Ui6stKsuVgYKRbDNqjJxEgYQFCU',
   guildId: '1553686123115450389',
   ticketCategoryId: '1553847153099673673',
   archiveCategoryId: '1553847178269696080',
