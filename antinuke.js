@@ -1,7 +1,36 @@
+const fs = require('fs');
+const path = require('path');
 const { AuditLogEvent } = require('discord.js');
 const config = require('./config');
 
+const STATE_FILE = path.join(__dirname, 'antinuke-state.json');
 const actionState = new Map();
+
+function loadEnabled() {
+  try {
+    const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    return typeof data.enabled === 'boolean' ? data.enabled : config.antinuke.enabled;
+  } catch (err) {
+    return config.antinuke.enabled;
+  }
+}
+
+let enabled = loadEnabled();
+
+function isAntinukeEnabled() {
+  return enabled;
+}
+
+function setAntinukeEnabled(value) {
+  enabled = value;
+  actionState.clear();
+
+  try {
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ enabled }));
+  } catch (err) {
+    console.error(err);
+  }
+}
 
 function isWhitelisted(userId, member) {
   if (config.antinuke.ownerIds.includes(userId)) return true;
@@ -105,6 +134,9 @@ const revertHandlers = {
 };
 
 async function handleRule(ruleName, guild, userId, data) {
+  if (!enabled) return;
+  if (userId === guild.client.user.id) return;
+
   const rule = config.antinuke.rules[ruleName];
   if (!rule || !rule.enabled) return;
 
@@ -137,20 +169,26 @@ async function getExecutorId(guild, auditLogType, targetId) {
   return entry ? entry.executor.id : null;
 }
 
-function setupAntinuke(client) {
-  if (!config.antinuke.enabled) return;
+function listen(client, event, handler) {
+  client.on(event, (...args) => {
+    if (!enabled) return;
+    Promise.resolve(handler(...args)).catch((err) => console.error(err));
+  });
+}
 
-  client.on('guildBanAdd', async (ban) => {
+function setupAntinuke(client) {
+  listen(client, 'guildBanAdd', async (ban) => {
     const executorId = await getExecutorId(ban.guild, AuditLogEvent.MemberBanAdd, ban.user.id);
     if (executorId) await handleRule('banAdd', ban.guild, executorId, { userId: ban.user.id });
   });
 
-  client.on('guildMemberRemove', async (member) => {
+  listen(client, 'guildMemberRemove', async (member) => {
     const executorId = await getExecutorId(member.guild, AuditLogEvent.MemberKick, member.id);
     if (executorId) await handleRule('kick', member.guild, executorId, { memberId: member.id });
   });
 
-  client.on('channelDelete', async (channel) => {
+  listen(client, 'channelDelete', async (channel) => {
+    if (!channel.guild) return;
     const executorId = await getExecutorId(channel.guild, AuditLogEvent.ChannelDelete, channel.id);
     if (executorId) {
       await handleRule('channelDelete', channel.guild, executorId, {
@@ -168,14 +206,14 @@ function setupAntinuke(client) {
     }
   });
 
-  client.on('channelCreate', async (channel) => {
+  listen(client, 'channelCreate', async (channel) => {
     const executorId = await getExecutorId(channel.guild, AuditLogEvent.ChannelCreate, channel.id);
     if (executorId) {
       await handleRule('channelCreate', channel.guild, executorId, { channelId: channel.id });
     }
   });
 
-  client.on('messageCreate', async (message) => {
+  listen(client, 'messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
     if (message.mentions.roles.size === 0) return;
 
@@ -186,4 +224,4 @@ function setupAntinuke(client) {
   });
 }
 
-module.exports = { setupAntinuke };
+module.exports = { setupAntinuke, setAntinukeEnabled, isAntinukeEnabled };
