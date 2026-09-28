@@ -1,227 +1,107 @@
-const fs = require('fs');
-const path = require('path');
-const { AuditLogEvent } = require('discord.js');
-const config = require('./config');
-
-const STATE_FILE = path.join(__dirname, 'antinuke-state.json');
-const actionState = new Map();
-
-function loadEnabled() {
-  try {
-    const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-    return typeof data.enabled === 'boolean' ? data.enabled : config.antinuke.enabled;
-  } catch (err) {
-    return config.antinuke.enabled;
-  }
-}
-
-let enabled = loadEnabled();
-
-function isAntinukeEnabled() {
-  return enabled;
-}
-
-function setAntinukeEnabled(value) {
-  enabled = value;
-  actionState.clear();
-
-  try {
-    fs.writeFileSync(STATE_FILE, JSON.stringify({ enabled }));
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-function isWhitelisted(userId, member) {
-  if (config.antinuke.ownerIds.includes(userId)) return true;
-  if (config.antinuke.whitelistUserIds.includes(userId)) return true;
-
-  if (member) {
-    for (const roleId of config.antinuke.whitelistRoleIds) {
-      if (member.roles.cache.has(roleId)) return true;
-    }
-  }
-
-  return false;
-}
-
-function recordAction(ruleName, userId, data) {
-  const rule = config.antinuke.rules[ruleName];
-  const key = `${ruleName}:${userId}`;
-  const now = Date.now();
-  const entries = actionState.get(key) || [];
-  const recent = entries.filter((e) => now - e.timestamp < rule.windowMs);
-  recent.push({ timestamp: now, data });
-  actionState.set(key, recent);
-  return recent;
-}
-
-function clearAction(ruleName, userId) {
-  actionState.delete(`${ruleName}:${userId}`);
-}
-
-async function logToChannel(guild, message) {
-  if (!config.antinuke.logChannelId) return;
-  const channel = guild.channels.cache.get(config.antinuke.logChannelId);
-  if (channel) await channel.send({ content: message });
-}
-
-async function punishUser(guild, userId, punishment, reason, timeoutMs) {
-  const member = await guild.members.fetch(userId).catch(() => null);
-  if (!member) return;
-
-  if (punishment === 'ban') {
-    await guild.members.ban(userId, { reason }).catch(() => null);
-    return;
-  }
-
-  if (punishment === 'kick') {
-    await member.kick(reason).catch(() => null);
-    return;
-  }
-
-  if (punishment === 'timeout') {
-    await member.timeout(timeoutMs, reason).catch(() => null);
-    return;
-  }
-
-  const removable = member.roles.cache.filter((r) => r.id !== guild.id && r.editable);
-  await member.roles.remove(removable, reason).catch(() => null);
-}
-
-async function revertBanAdd(guild, entries) {
-  for (const entry of entries) {
-    await guild.members.unban(entry.data.userId, 'Antinuke revert').catch(() => null);
-  }
-}
-
-async function revertChannelDelete(guild, entries) {
-  for (const entry of entries) {
-    const data = entry.data;
-    await guild.channels
-      .create({
-        name: data.name,
-        type: data.type,
-        parent: data.parentId || undefined,
-        position: data.position,
-        permissionOverwrites: data.permissionOverwrites,
-      })
-      .catch(() => null);
-  }
-}
-
-async function revertChannelCreate(guild, entries) {
-  for (const entry of entries) {
-    const channel = guild.channels.cache.get(entry.data.channelId);
-    if (channel) await channel.delete('Antinuke revert').catch(() => null);
-  }
-}
-
-async function revertRoleMention(guild, entries) {
-  for (const entry of entries) {
-    const channel = guild.channels.cache.get(entry.data.channelId);
-    if (!channel) continue;
-    const message = await channel.messages.fetch(entry.data.messageId).catch(() => null);
-    if (message) await message.delete().catch(() => null);
-  }
-}
-
-const revertHandlers = {
-  banAdd: revertBanAdd,
-  channelDelete: revertChannelDelete,
-  channelCreate: revertChannelCreate,
-  roleMention: revertRoleMention,
+module.exports = {
+  token: 'PASTE_YOUR_NEW_BOT_TOKEN_HERE',
+  guildId: '1553686123115450389',
+  ticketCategoryId: '1553847153099673673',
+  archiveCategoryId: '1553847178269696080',
+  ticketTypes: {
+    verify: {
+      title: 'Verification Ticket',
+      command: ',pv',
+      description: 'Click below to open a verification ticket.',
+      welcomeText: 'Please send a screenshot of your Roblox display name to continue.',
+      color: 0x8A5CF6,
+      gifUrl: 'https://cdn.discordapp.com/attachments/1553686125334499372/1553824421888659576/0CC31915-6394-481F-BCA4-BA25E2BAFCA8.gif?ex=6abaa742&is=6ab955c2&hm=8ee169c01476adef9ce07d275890f8c7c894d00fae24a35d65a36f6b5eb12a09&',
+      allowedRoleIds: [
+        '1553741876060749957',
+        '1553741844775436340',
+        '1553741777603924010',
+        '1553732191480188948',
+      ],
+      pingRoleId: '1553752363590750218',
+      grantRoleId: '1553778532264583370',
+      grantLabel: 'Grant Verified Role',
+      showDelete: true,
+    },
+    staff: {
+      title: 'Staff Ticket',
+      command: ',ps',
+      description: 'Click below to open a staff ticket.',
+      welcomeText: 'Please send a screenshot of your Roblox display name to continue.',
+      color: 0x5C6BC0,
+      gifUrl: 'https://cdn.discordapp.com/attachments/1553686125334499372/1553824967500627988/196B9BDD-0DA1-4695-ADA8-20D61FD598D5.gif?ex=6abaa7c4&is=6ab95644&hm=f2b7ef4d6047577dec786b9d6b91e63176ee4dd74af0b35c6853cae160ac3fb1&',
+      allowedRoleIds: [
+        '1553741777603924010',
+        '1553732191480188948',
+        '1553732385013629068',
+        '1553728944187117599',
+      ],
+      pingRoleId: '1553741777603924010',
+      grantRoleId: null,
+      grantLabel: null,
+      showDelete: false,
+    },
+    raid: {
+      title: 'Raid Ticket',
+      command: ',pr',
+      description: 'Click below to open a raid report ticket.',
+      welcomeText: 'Please send a screenshot of your Roblox display name to continue.',
+      color: 0xE53935,
+      gifUrl: 'https://cdn.discordapp.com/attachments/1553686125334499372/1553825156697169950/53A6BFEB-B935-478E-8758-A49D50235A8E.gif?ex=6abaa7f2&is=6ab95672&hm=8a0b0b77b97dc964b7b9380e4a23c951d070d26d159830ca769b5617cb97f282&',
+      allowedRoleIds: [
+        '1553741876060749957',
+        '1553741844775436340',
+        '1553741777603924010',
+        '1553732191480188948',
+      ],
+      pingRoleId: '1553752363590750218',
+      grantRoleId: '1553808721703075860',
+      grantLabel: 'Grant Role',
+      showDelete: true,
+    },
+  },
+  antinuke: {
+    enabled: true,
+    ownerIds: ['1370120381695922346', '1283217337084018749'],
+    whitelistUserIds: [],
+    whitelistRoleIds: [],
+    logChannelId: '1553850076408053910',
+    rules: {
+      banAdd: {
+        enabled: true,
+        limit: 2,
+        windowMs: 60000,
+        punishment: 'stripRoles',
+        revert: true,
+      },
+      kick: {
+        enabled: true,
+        limit: 2,
+        windowMs: 60000,
+        punishment: 'stripRoles',
+        revert: false,
+      },
+      channelDelete: {
+        enabled: true,
+        limit: 1,
+        windowMs: 60000,
+        punishment: 'stripRoles',
+        revert: true,
+      },
+      channelCreate: {
+        enabled: true,
+        limit: 1,
+        windowMs: 60000,
+        punishment: 'stripRoles',
+        revert: true,
+      },
+      roleMention: {
+        enabled: true,
+        limit: 3,
+        windowMs: 240000,
+        punishment: 'timeout',
+        timeoutMs: 7200000,
+        revert: true,
+      },
+    },
+  },
 };
-
-async function handleRule(ruleName, guild, userId, data) {
-  if (!enabled) return;
-  if (userId === guild.client.user.id) return;
-
-  const rule = config.antinuke.rules[ruleName];
-  if (!rule || !rule.enabled) return;
-
-  const member = await guild.members.fetch(userId).catch(() => null);
-  if (isWhitelisted(userId, member)) return;
-
-  const entries = recordAction(ruleName, userId, data);
-
-  if (entries.length >= rule.limit) {
-    await punishUser(guild, userId, rule.punishment, `Antinuke: ${ruleName} limit exceeded`, rule.timeoutMs);
-
-    if (rule.revert && revertHandlers[ruleName]) {
-      await revertHandlers[ruleName](guild, entries);
-    }
-
-    await logToChannel(
-      guild,
-      `Antinuke triggered on <@${userId}> for ${ruleName}. Punishment: ${rule.punishment}${rule.revert ? ' (reverted)' : ''}.`
-    );
-
-    clearAction(ruleName, userId);
-  }
-}
-
-async function getExecutorId(guild, auditLogType, targetId) {
-  const logs = await guild.fetchAuditLogs({ type: auditLogType, limit: 5 }).catch(() => null);
-  if (!logs) return null;
-
-  const entry = logs.entries.find((e) => !targetId || e.target?.id === targetId);
-  return entry ? entry.executor.id : null;
-}
-
-function listen(client, event, handler) {
-  client.on(event, (...args) => {
-    if (!enabled) return;
-    Promise.resolve(handler(...args)).catch((err) => console.error(err));
-  });
-}
-
-function setupAntinuke(client) {
-  listen(client, 'guildBanAdd', async (ban) => {
-    const executorId = await getExecutorId(ban.guild, AuditLogEvent.MemberBanAdd, ban.user.id);
-    if (executorId) await handleRule('banAdd', ban.guild, executorId, { userId: ban.user.id });
-  });
-
-  listen(client, 'guildMemberRemove', async (member) => {
-    const executorId = await getExecutorId(member.guild, AuditLogEvent.MemberKick, member.id);
-    if (executorId) await handleRule('kick', member.guild, executorId, { memberId: member.id });
-  });
-
-  listen(client, 'channelDelete', async (channel) => {
-    if (!channel.guild) return;
-    const executorId = await getExecutorId(channel.guild, AuditLogEvent.ChannelDelete, channel.id);
-    if (executorId) {
-      await handleRule('channelDelete', channel.guild, executorId, {
-        name: channel.name,
-        type: channel.type,
-        parentId: channel.parentId,
-        position: channel.position,
-        permissionOverwrites: channel.permissionOverwrites.cache.map((o) => ({
-          id: o.id,
-          type: o.type,
-          allow: o.allow,
-          deny: o.deny,
-        })),
-      });
-    }
-  });
-
-  listen(client, 'channelCreate', async (channel) => {
-    const executorId = await getExecutorId(channel.guild, AuditLogEvent.ChannelCreate, channel.id);
-    if (executorId) {
-      await handleRule('channelCreate', channel.guild, executorId, { channelId: channel.id });
-    }
-  });
-
-  listen(client, 'messageCreate', async (message) => {
-    if (message.author.bot || !message.guild) return;
-    if (message.mentions.roles.size === 0) return;
-
-    await handleRule('roleMention', message.guild, message.author.id, {
-      channelId: message.channel.id,
-      messageId: message.id,
-    });
-  });
-}
-
-module.exports = { setupAntinuke, setAntinukeEnabled, isAntinukeEnabled };
