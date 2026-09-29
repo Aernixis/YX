@@ -10,6 +10,11 @@ module.exports = {
     '1553732191480188948',
   ],
   panelGifUrl: 'https://cdn.discordapp.com/attachments/1553686125334499372/1553824421888659576/0CC31915-6394-481F-BCA4-BA25E2BAFCA8.gif?ex=6abaa742&is=6ab955c2&hm=8ee169c01476adef9ce07d275890f8c7c894d00fae24a35d65a36f6b5eb12a09&',
+  panelAliases: {
+    pv: 'verify',
+    ps: 'staff',
+    pr: 'raid',
+  },
   ticketTypes: {
     verify: {
       label: 'Verify',
@@ -29,7 +34,6 @@ module.exports = {
       color: 0x5C6BC0,
       pingRoleId: '1553752363590750218',
       choices: null,
-      buttons: false,
       welcomeText: 'Please answer the following questions:\n\n1. How old are you?\n2. How long have you been in YX?\n3. Why do you want to become a staff member?',
       grants: [],
     },
