@@ -1,13 +1,6 @@
 const { Client, GatewayIntentBits, Partials, MessageFlags } = require('discord.js');
 const config = require('./config');
-const {
-  sendTicketPanel,
-  handleTicketInteraction,
-  closeTicket,
-  getTicketTypeFromChannel,
-  canManageTicket,
-  isTicketClosed,
-} = require('./ticketSystem');
+const { sendTicketPanel, handleTicketInteraction } = require('./ticketSystem');
 const { setupAntinuke } = require('./antinuke');
 
 const client = new Client({
@@ -44,35 +37,13 @@ client.on('interactionCreate', async (interaction) => {
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  if (message.content.startsWith(',panel')) {
-    if (!message.member.permissions.has('Administrator')) return;
+  if (!message.content.startsWith(',')) return;
 
-    const type = message.content.split(' ')[1];
-    if (!config.ticketTypes[type]) {
-      await message.reply(`Unknown ticket type. Valid types: ${Object.keys(config.ticketTypes).join(', ')}`);
-      return;
-    }
+  const name = message.content.slice(1).split(' ')[0];
+  if (!Object.hasOwn(config.panelAliases, name)) return;
+  if (!message.member.permissions.has('Administrator')) return;
 
-    await sendTicketPanel(message.channel, type);
-    return;
-  }
-
-  if (message.content === ',close') {
-    const type = getTicketTypeFromChannel(message.channel);
-    if (!type) return;
-    if (!canManageTicket(message.member, message.channel)) return;
-
-    if (isTicketClosed(message.channel)) {
-      await message.reply('This ticket is already closed.');
-      return;
-    }
-
-    try {
-      await closeTicket(message.channel);
-    } catch (err) {
-      console.error(err);
-    }
-  }
+  await sendTicketPanel(message.channel, config.panelAliases[name]);
 });
 
 client.login(config.token);
