@@ -128,12 +128,11 @@ async function sendTicketPanel(channel, type) {
   const typeConfig = config.ticketTypes[type];
   if (!typeConfig) return;
 
-  await channel.send({ content: config.panelGifUrl });
-
   const embed = new EmbedBuilder()
     .setTitle(typeConfig.title)
     .setDescription(typeConfig.description)
-    .setColor(typeConfig.color);
+    .setColor(typeConfig.color)
+    .setImage(config.panelGifUrl);
 
   await channel.send({ embeds: [embed], components: [buildPanelRow(type)] });
 }
