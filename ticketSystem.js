@@ -88,13 +88,15 @@ function buildChoiceRow(type) {
 }
 
 function buildTicketRow(type) {
+  if (config.ticketTypes[type].buttons === false) return null;
+
   const row = new ActionRowBuilder();
 
   for (const grant of config.ticketTypes[type].grants) {
     row.addComponents(
       new ButtonBuilder()
         .setCustomId(`ticket_grant_${grant.key}`)
-        .setLabel(`Grant ${grant.name} Role`)
+        .setLabel(grant.label)
         .setStyle(ButtonStyle.Success)
     );
   }
@@ -218,7 +220,7 @@ async function createTicketChannel(interaction, type, choice) {
 
     const lines = [];
     if (choice) lines.push(`Applying for: **${choice.label}**`);
-    lines.push('Please send a screenshot of your Roblox display name to continue.');
+    lines.push(typeConfig.welcomeText || 'Please send a screenshot of your Roblox display name to continue.');
 
     const welcomeEmbed = new EmbedBuilder()
       .setTitle(`${typeConfig.label} Ticket Opened`)
@@ -228,7 +230,7 @@ async function createTicketChannel(interaction, type, choice) {
     await channel.send({
       content: `<@&${typeConfig.pingRoleId}> ${user}`,
       embeds: [welcomeEmbed],
-      components: [buildTicketRow(type)],
+      components: buildTicketRow(type) ? [buildTicketRow(type)] : [],
     });
 
     return respond(interaction, `Ticket created: ${channel}`);
