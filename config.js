@@ -19,7 +19,7 @@ module.exports = {
       pingRoleId: '1553752363590750218',
       choices: null,
       grants: [
-        { key: 'verified', name: 'Verified', roleId: '1553778532264583370' },
+        { key: 'verified', name: 'Verified', label: 'Verify', roleId: '1553778532264583370' },
       ],
     },
     staff: {
@@ -29,6 +29,8 @@ module.exports = {
       color: 0x5C6BC0,
       pingRoleId: '1553752363590750218',
       choices: null,
+      buttons: false,
+      welcomeText: 'Please answer the following questions:\n\n1. How old are you?\n2. How long have you been in YX?\n3. Why do you want to become a staff member?',
       grants: [],
     },
     raid: {
@@ -37,13 +39,14 @@ module.exports = {
       description: 'Open a ticket to apply for either Raid Manager or Tryout Host.',
       color: 0xE53935,
       pingRoleId: '1553752363590750218',
+      welcomeText: 'Please answer the following questions:\n\n1. How long have you been in YX?\n2. Why do you want to be Tryout Host or Raid Manager?',
       choices: [
         { key: 'raidmanager', label: 'Raid Manager' },
         { key: 'tryouthost', label: 'Tryout Host' },
       ],
       grants: [
-        { key: 'raidmanager', name: 'Raid Manager', roleId: '1553808721703075860' },
-        { key: 'tryouthost', name: 'Tryout Host', roleId: '1553954172485894174' },
+        { key: 'raidmanager', name: 'Raid Manager', label: 'Grant Raid Manager', roleId: '1553808721703075860' },
+        { key: 'tryouthost', name: 'Tryout Host', label: 'Grant Tryout Host', roleId: '1553954172485894174' },
       ],
     },
   },
