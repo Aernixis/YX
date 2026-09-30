@@ -7,6 +7,7 @@ const {
   MessageFlags,
   OverwriteType,
   PermissionsBitField,
+  StringSelectMenuBuilder,
 } = require('discord.js');
 const config = require('./config');
 
@@ -87,10 +88,28 @@ function sortTicketChannels(guild) {
 }
 
 function buildPanelRow(type) {
+  const typeConfig = config.ticketTypes[type];
+
+  if (typeConfig.dropdown) {
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId(`ticket_select_${type}`)
+      .setPlaceholder(typeConfig.dropdown.placeholder)
+      .addOptions(
+        typeConfig.choices.map((choice) => ({
+          label: choice.label,
+          description: choice.description,
+          value: choice.key,
+          emoji: choice.emoji,
+        }))
+      );
+
+    return new ActionRowBuilder().addComponents(menu);
+  }
+
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`ticket_create_${type}`)
-      .setLabel(`Open ${config.ticketTypes[type].label} Ticket`)
+      .setLabel(`Open ${typeConfig.label} Ticket`)
       .setStyle(ButtonStyle.Primary)
   );
 }
@@ -213,7 +232,7 @@ function buildTicketPermissionOverwrites(guild, userId) {
 
 async function promptCreate(interaction, type) {
   const typeConfig = config.ticketTypes[type];
-  if (!typeConfig) return;
+  if (!typeConfig || typeConfig.dropdown) return;
 
   if (typeConfig.choices) {
     const embed = new EmbedBuilder()
@@ -245,7 +264,12 @@ async function createTicketChannel(interaction, type, choice) {
   const typeConfig = config.ticketTypes[type];
   if (!typeConfig) return;
 
-  await interaction.deferUpdate();
+  if (interaction.isStringSelectMenu()) {
+    await interaction.deferReply({ flags: ephemeral });
+    await interaction.message.edit({ components: [buildPanelRow(type)] }).catch(() => null);
+  } else {
+    await interaction.deferUpdate();
+  }
 
   if (creatingUsers.has(user.id)) {
     return respond(interaction, 'You already have a ticket being created.');
@@ -273,11 +297,15 @@ async function createTicketChannel(interaction, type, choice) {
     });
 
     const lines = [];
-    if (choice) lines.push(`Applying for: **${choice.label}**`);
-    lines.push(typeConfig.welcomeText || 'Please send a screenshot of your Roblox display name to continue.');
+    if (choice && !choice.welcomeText) lines.push(`Applying for: **${choice.label}**`);
+    lines.push(
+      (choice && choice.welcomeText) ||
+        typeConfig.welcomeText ||
+        'Please send a screenshot of your Roblox display name to continue.'
+    );
 
     const welcomeEmbed = new EmbedBuilder()
-      .setTitle(`${typeConfig.label} Ticket Opened`)
+      .setTitle((choice && choice.welcomeTitle) || `${typeConfig.label} Ticket Opened`)
       .setDescription(lines.join('\n'))
       .setColor(typeConfig.color);
 
@@ -315,8 +343,18 @@ async function grantRole(interaction, key) {
     return interaction.reply({ content: 'The ticket owner is no longer in the server.', flags: ephemeral });
   }
 
+  const addIds = [...(grant.roleIds || [])];
+  if (grant.byChoice && info.choiceKey && grant.byChoice[info.choiceKey]) {
+    addIds.push(grant.byChoice[info.choiceKey]);
+  }
+
+  const reason = `Granted by ${interaction.user.tag}`;
+
   try {
-    await member.roles.add(grant.roleId, `Granted by ${interaction.user.tag}`);
+    if (grant.removeRoleIds && grant.removeRoleIds.length) {
+      await member.roles.remove(grant.removeRoleIds, reason);
+    }
+    await member.roles.add(addIds, reason);
   } catch (err) {
     console.error(err);
     return interaction.reply({
@@ -386,13 +424,26 @@ async function deleteTicketChannel(interaction) {
 }
 
 async function handleTicketInteraction(interaction) {
-  if (!interaction.isButton()) return;
+  if (!interaction.isButton() && !interaction.isStringSelectMenu()) return;
 
   const id = interaction.customId;
+  const selectPrefix = 'ticket_select_';
   const createPrefix = 'ticket_create_';
   const choosePrefix = 'ticket_choose_';
   const confirmPrefix = 'ticket_confirm_';
   const grantPrefix = 'ticket_grant_';
+
+  if (interaction.isStringSelectMenu()) {
+    if (!id.startsWith(selectPrefix)) return;
+    const type = id.slice(selectPrefix.length);
+    const typeConfig = config.ticketTypes[type];
+    const choice =
+      typeConfig && typeConfig.choices && typeConfig.choices.find((c) => c.key === interaction.values[0]);
+    if (!choice) {
+      return interaction.reply({ content: 'Invalid choice.', flags: ephemeral });
+    }
+    return createTicketChannel(interaction, type, choice);
+  }
 
   if (id.startsWith(createPrefix)) {
     return promptCreate(interaction, id.slice(createPrefix.length));
