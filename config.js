@@ -25,7 +25,13 @@ module.exports = {
       pingRoleId: '1553752363590750218',
       choices: null,
       grants: [
-        { key: 'verified', name: 'Verified', label: 'Verify', roleId: '1553778532264583370' },
+        {
+          key: 'verified',
+          name: 'Verified',
+          label: 'Verify',
+          roleIds: ['1553778553827622922', '1553778532264583370'],
+          removeRoleIds: ['1553778505785937984'],
+        },
       ],
     },
     staff: {
@@ -34,9 +40,48 @@ module.exports = {
       description: 'Open a ticket to apply for a staff position.\n\nNeeded staffs:\nEnglish | Arabic | Russian Staffs',
       color: 0x5C6BC0,
       pingRoleId: '1553752363590750218',
-      choices: null,
-      welcomeText: 'Please answer the following questions:\n\n1. How old are you?\n2. How long have you been in YX?\n3. Why do you want to become a staff member?',
-      grants: [],
+      dropdown: {
+        placeholder: 'Select a language to open a staff ticket',
+      },
+      choices: [
+        {
+          key: 'eng',
+          label: 'English',
+          description: 'Open an English staff ticket',
+          emoji: '\u{1F1EC}\u{1F1E7}',
+          welcomeTitle: 'Staff Ticket Opened',
+          welcomeText: 'Please answer the following questions:\n\n1. How old are you?\n2. How long have you been in YX?\n3. Why do you want to become a staff member?',
+        },
+        {
+          key: 'arab',
+          label: '\u0627\u0644\u0639\u0631\u0628\u064A\u0629',
+          description: '\u0627\u0641\u062A\u062D \u062A\u0630\u0643\u0631\u0629 \u0625\u062F\u0627\u0631\u0629 \u0628\u0627\u0644\u0639\u0631\u0628\u064A\u0629',
+          emoji: '\u{1F1F8}\u{1F1E6}',
+          welcomeTitle: '\u062A\u0645 \u0641\u062A\u062D \u062A\u0630\u0643\u0631\u0629 \u0627\u0644\u0625\u062F\u0627\u0631\u0629',
+          welcomeText: '\u064A\u0631\u062C\u0649 \u0627\u0644\u0625\u062C\u0627\u0628\u0629 \u0639\u0646 \u0627\u0644\u0623\u0633\u0626\u0644\u0629 \u0627\u0644\u062A\u0627\u0644\u064A\u0629:\n\n1. \u0643\u0645 \u0639\u0645\u0631\u0643\u061F\n2. \u0645\u0646\u0630 \u0645\u062A\u0649 \u0648\u0623\u0646\u062A \u0641\u064A YX\u061F\n3. \u0644\u0645\u0627\u0630\u0627 \u062A\u0631\u064A\u062F \u0623\u0646 \u062A\u0635\u0628\u062D \u0639\u0636\u0648\u064B\u0627 \u0641\u064A \u0627\u0644\u0625\u062F\u0627\u0631\u0629\u061F',
+        },
+        {
+          key: 'rus',
+          label: '\u0420\u0443\u0441\u0441\u043A\u0438\u0439',
+          description: '\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0440\u0443\u0441\u0441\u043A\u0438\u0439 \u0442\u0438\u043A\u0435\u0442 \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u0430',
+          emoji: '\u{1F1F7}\u{1F1FA}',
+          welcomeTitle: '\u0422\u0438\u043A\u0435\u0442 \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u0430 \u043E\u0442\u043A\u0440\u044B\u0442',
+          welcomeText: '\u041F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u043E\u0442\u0432\u0435\u0442\u044C\u0442\u0435 \u043D\u0430 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0435 \u0432\u043E\u043F\u0440\u043E\u0441\u044B:\n\n1. \u0421\u043A\u043E\u043B\u044C\u043A\u043E \u0432\u0430\u043C \u043B\u0435\u0442?\n2. \u041A\u0430\u043A \u0434\u0430\u0432\u043D\u043E \u0432\u044B \u0432 YX?\n3. \u041F\u043E\u0447\u0435\u043C\u0443 \u0432\u044B \u0445\u043E\u0442\u0438\u0442\u0435 \u0441\u0442\u0430\u0442\u044C \u0447\u043B\u0435\u043D\u043E\u043C \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u0430?',
+        },
+      ],
+      grants: [
+        {
+          key: 'staff',
+          name: 'Staff',
+          label: 'Grant Staff',
+          roleIds: ['1553742179032109188', '1553752363590750218'],
+          byChoice: {
+            eng: '1554073618441306122',
+            arab: '1554073712003645552',
+            rus: '1554073657465376788',
+          },
+        },
+      ],
     },
     raid: {
       label: 'Raid Manager / Tryout Host',
@@ -50,8 +95,8 @@ module.exports = {
         { key: 'tryouthost', label: 'Tryout Host' },
       ],
       grants: [
-        { key: 'raidmanager', name: 'Raid Manager', label: 'Grant Raid Manager', roleId: '1553808721703075860' },
-        { key: 'tryouthost', name: 'Tryout Host', label: 'Grant Tryout Host', roleId: '1553954172485894174' },
+        { key: 'raidmanager', name: 'Raid Manager', label: 'Grant Raid Manager', roleIds: ['1553808721703075860'] },
+        { key: 'tryouthost', name: 'Tryout Host', label: 'Grant Tryout Host', roleIds: ['1553954172485894174'] },
       ],
     },
   },
