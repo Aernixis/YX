@@ -45,6 +45,7 @@ client.on('messageCreate', async (message) => {
 
   try {
     await sendTicketPanel(message.channel, config.panelAliases[name]);
+    await message.delete().catch(() => null);
   } catch (err) {
     console.error(err);
     await message.reply(`Failed to send the panel: ${err.message}`).catch(() => null);
