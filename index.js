@@ -40,10 +40,17 @@ client.on('messageCreate', async (message) => {
   if (!message.content.startsWith(',')) return;
 
   const name = message.content.slice(1).split(' ')[0];
-  if (!Object.hasOwn(config.panelAliases, name)) return;
-  if (!message.member.permissions.has('Administrator')) return;
+  if (!Object.prototype.hasOwnProperty.call(config.panelAliases || {}, name)) return;
+  if (!message.member || !message.member.permissions.has('Administrator')) return;
 
-  await sendTicketPanel(message.channel, config.panelAliases[name]);
+  try {
+    await sendTicketPanel(message.channel, config.panelAliases[name]);
+  } catch (err) {
+    console.error(err);
+    await message.reply(`Failed to send the panel: ${err.message}`).catch(() => null);
+  }
 });
+
+process.on('unhandledRejection', (err) => console.error(err));
 
 client.login(config.token);
