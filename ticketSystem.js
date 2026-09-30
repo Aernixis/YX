@@ -105,11 +105,7 @@ function buildTicketRow(type) {
     new ButtonBuilder()
       .setCustomId('ticket_close')
       .setLabel('Close Ticket')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId('ticket_delete_channel')
-      .setLabel('Delete Channel')
-      .setStyle(ButtonStyle.Danger)
+      .setStyle(ButtonStyle.Secondary)
   );
 
   return row;
@@ -128,11 +124,16 @@ async function sendTicketPanel(channel, type) {
   const typeConfig = config.ticketTypes[type];
   if (!typeConfig) return;
 
+  const gifEmbed = new EmbedBuilder()
+    .setColor(typeConfig.color)
+    .setImage(config.panelGifUrl);
+
+  await channel.send({ embeds: [gifEmbed] });
+
   const embed = new EmbedBuilder()
     .setTitle(typeConfig.title)
     .setDescription(typeConfig.description)
-    .setColor(typeConfig.color)
-    .setImage(config.panelGifUrl);
+    .setColor(typeConfig.color);
 
   await channel.send({ embeds: [embed], components: [buildPanelRow(type)] });
 }
