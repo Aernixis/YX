@@ -50,10 +50,40 @@ function canManageTicket(member, channel) {
 }
 
 function respond(interaction, content) {
-  if (interaction.customId.startsWith('ticket_choose_')) {
-    return interaction.update({ content, embeds: [], components: [] });
-  }
-  return interaction.reply({ content, flags: ephemeral });
+  const payload = { content, embeds: [], components: [] };
+  if (interaction.deferred || interaction.replied) return interaction.editReply(payload);
+  return interaction.update(payload);
+}
+
+let sortChain = Promise.resolve();
+
+async function runTicketSort(guild) {
+  const rank = (channel) => {
+    const index = config.ticketOrder.indexOf(getTicketTypeFromChannel(channel));
+    return index === -1 ? config.ticketOrder.length : index;
+  };
+
+  const sorted = [...guild.channels.cache.values()]
+    .filter((c) => c.parentId === config.ticketCategoryId && c.type === ChannelType.GuildText)
+    .sort((a, b) => rank(a) - rank(b) || a.createdTimestamp - b.createdTimestamp);
+
+  if (sorted.length < 2) return;
+
+  const base = Math.min(...sorted.map((c) => c.rawPosition));
+  const updates = [];
+
+  sorted.forEach((channel, index) => {
+    if (channel.rawPosition !== base + index) {
+      updates.push({ channel: channel.id, position: base + index });
+    }
+  });
+
+  if (updates.length) await guild.channels.setPositions(updates);
+}
+
+function sortTicketChannels(guild) {
+  sortChain = sortChain.then(() => runTicketSort(guild)).catch((err) => console.error(err));
+  return sortChain;
 }
 
 function buildPanelRow(type) {
@@ -85,6 +115,19 @@ function buildChoiceRow(type) {
   );
 
   return row;
+}
+
+function buildConfirmRow(type) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`ticket_confirm_${type}`)
+      .setLabel('Yes, open ticket')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId('ticket_cancel')
+      .setLabel('Cancel')
+      .setStyle(ButtonStyle.Secondary)
+  );
 }
 
 function buildTicketRow(type) {
@@ -185,13 +228,24 @@ async function promptCreate(interaction, type) {
     });
   }
 
-  return createTicketChannel(interaction, type, null);
+  const confirmEmbed = new EmbedBuilder()
+    .setTitle('Are you sure?')
+    .setDescription(`Do you want to open a ${typeConfig.label} ticket?`)
+    .setColor(typeConfig.color);
+
+  return interaction.reply({
+    embeds: [confirmEmbed],
+    components: [buildConfirmRow(type)],
+    flags: ephemeral,
+  });
 }
 
 async function createTicketChannel(interaction, type, choice) {
   const { guild, user } = interaction;
   const typeConfig = config.ticketTypes[type];
   if (!typeConfig) return;
+
+  await interaction.deferUpdate();
 
   if (creatingUsers.has(user.id)) {
     return respond(interaction, 'You already have a ticket being created.');
@@ -232,6 +286,8 @@ async function createTicketChannel(interaction, type, choice) {
       embeds: [welcomeEmbed],
       components: buildTicketRow(type) ? [buildTicketRow(type)] : [],
     });
+
+    await sortTicketChannels(guild);
 
     return respond(interaction, `Ticket created: ${channel}`);
   } finally {
@@ -335,6 +391,7 @@ async function handleTicketInteraction(interaction) {
   const id = interaction.customId;
   const createPrefix = 'ticket_create_';
   const choosePrefix = 'ticket_choose_';
+  const confirmPrefix = 'ticket_confirm_';
   const grantPrefix = 'ticket_grant_';
 
   if (id.startsWith(createPrefix)) {
@@ -347,6 +404,14 @@ async function handleTicketInteraction(interaction) {
     const choice = typeConfig && typeConfig.choices && typeConfig.choices.find((c) => c.key === choiceKey);
     if (!choice) return respond(interaction, 'Invalid choice.');
     return createTicketChannel(interaction, type, choice);
+  }
+
+  if (id.startsWith(confirmPrefix)) {
+    const type = id.slice(confirmPrefix.length);
+    if (!config.ticketTypes[type] || config.ticketTypes[type].choices) {
+      return respond(interaction, 'Invalid ticket type.');
+    }
+    return createTicketChannel(interaction, type, null);
   }
 
   if (id === 'ticket_cancel') {
@@ -379,6 +444,7 @@ module.exports = {
   handleTicketInteraction,
   closeTicket,
   createTicketChannel,
+  sortTicketChannels,
   deleteTicketChannel,
   getTicketTypeFromChannel,
   canManageTicket,
