@@ -13,6 +13,7 @@ const config = require('./config');
 
 const creatingUsers = new Set();
 const ephemeral = MessageFlags.Ephemeral;
+const ARCHIVE_ON_GRANT = new Set(['verified']);
 
 function encodeTopic(ownerId, type, choiceKey) {
   return `${ownerId}|${type}|${choiceKey || ''}`;
@@ -173,11 +174,11 @@ function buildTicketRow(type) {
   return row;
 }
 
-function buildDeleteRow() {
+function buildDeleteRow(label = 'Delete Channel') {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('ticket_delete_channel')
-      .setLabel('Delete Channel')
+      .setLabel(label)
       .setStyle(ButtonStyle.Danger)
   );
 }
@@ -363,21 +364,42 @@ async function grantRole(interaction, key) {
     });
   }
 
+  const archive = ARCHIVE_ON_GRANT.has(grant.key);
+
   const grantedEmbed = new EmbedBuilder()
     .setTitle(`${grant.name} Role Granted`)
     .setDescription(`${member} has been given the ${grant.name} role.`)
     .setColor(0x43B581);
 
-  return interaction.reply({ embeds: [grantedEmbed] });
+  await interaction.reply({
+    embeds: [grantedEmbed],
+    components: archive ? [buildDeleteRow('Delete Ticket')] : [],
+  });
+
+  if (archive && !isTicketClosed(interaction.channel)) {
+    try {
+      await closeTicket(interaction.channel, { announce: false });
+    } catch (err) {
+      console.error(err);
+      await interaction
+        .followUp({
+          content: 'The role was granted but the ticket could not be archived.',
+          flags: ephemeral,
+        })
+        .catch(() => null);
+    }
+  }
 }
 
-async function closeTicket(channel) {
-  const closedEmbed = new EmbedBuilder()
-    .setTitle('Ticket Closed')
-    .setDescription('This ticket has been closed and archived. Staff can delete the channel below.')
-    .setColor(0xE53935);
+async function closeTicket(channel, options = {}) {
+  if (options.announce !== false) {
+    const closedEmbed = new EmbedBuilder()
+      .setTitle('Ticket Closed')
+      .setDescription('This ticket has been closed and archived. Staff can delete the channel below.')
+      .setColor(0xE53935);
 
-  await channel.send({ embeds: [closedEmbed], components: [buildDeleteRow()] }).catch(() => null);
+    await channel.send({ embeds: [closedEmbed], components: [buildDeleteRow()] }).catch(() => null);
+  }
 
   const botId = channel.client.user.id;
   for (const overwrite of channel.permissionOverwrites.cache.values()) {
