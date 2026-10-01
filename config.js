@@ -1,5 +1,11 @@
+require('dotenv').config();
+
+if (!process.env.BOT_TOKEN) {
+  throw new Error('BOT_TOKEN is missing. Add it to your .env file or the server environment variables.');
+}
+
 module.exports = {
-  token: 'MTU1Mzg2NzcwNTUyMDc1MDczNg.G6YkNm.ff0DFJM7c07Ui6stKsuVgYKRbDNqjJxEgYQFCU',
+  token: process.env.BOT_TOKEN,
   guildId: '1553686123115450389',
   ticketCategoryId: '1553847153099673673',
   archiveCategoryId: '1553847178269696080',
