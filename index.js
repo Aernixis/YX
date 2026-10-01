@@ -7,6 +7,8 @@ const {
   setAntinukeEnabled,
   isAntinukeEnabled,
   toggleWhitelist,
+  isPermed,
+  togglePerm,
 } = require('./antinuke');
 
 const client = new Client({
@@ -28,9 +30,37 @@ function extractUserId(text) {
 }
 
 async function handleNukeCommand(message, args) {
-  if (!config.antinuke.ownerIds.includes(message.author.id)) return;
+  const isOwner = config.antinuke.ownerIds.includes(message.author.id);
+  if (!isOwner && !isPermed(message.author.id)) return;
 
   const sub = args[0] ? args[0].toLowerCase() : undefined;
+
+  if (sub === 'perm' || sub === 'perms') {
+    if (!isOwner) {
+      await message.reply('Only owners can perm users.');
+      return;
+    }
+
+    const userId = extractUserId(args[1]);
+    if (!userId) {
+      await message.reply('Use ,anuke perm followed by a mention or user ID.');
+      return;
+    }
+
+    if (config.antinuke.ownerIds.includes(userId)) {
+      await message.reply('Owners already have full access.');
+      return;
+    }
+
+    const added = togglePerm(userId);
+    await message.reply({
+      content: added
+        ? `<@${userId}> was given antinuke permissions.`
+        : `<@${userId}> had their antinuke permissions removed.`,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
 
   if (sub === 'wl') {
     const userId = extractUserId(args[1]);
@@ -52,7 +82,7 @@ async function handleNukeCommand(message, args) {
   if (sub === 'on' || sub === 'off') {
     setAntinukeEnabled(sub === 'on');
   } else if (sub) {
-    await message.reply('Use ,anuke on, ,anuke off or ,anuke wl <user>.');
+    await message.reply('Use ,anuke on, ,anuke off, ,anuke wl <user> or ,anuke perm <user>.');
     return;
   }
 
