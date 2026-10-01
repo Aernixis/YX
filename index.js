@@ -2,7 +2,12 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, MessageFlags } = require('discord.js');
 const config = require('./config');
 const { sendTicketPanel, handleTicketInteraction } = require('./ticketSystem');
-const { setupAntinuke, setAntinukeEnabled, isAntinukeEnabled } = require('./antinuke');
+const {
+  setupAntinuke,
+  setAntinukeEnabled,
+  isAntinukeEnabled,
+  toggleWhitelist,
+} = require('./antinuke');
 
 const client = new Client({
   intents: [
@@ -16,13 +21,38 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-async function handleNukeCommand(message, argument) {
+function extractUserId(text) {
+  if (!text) return null;
+  const match = text.match(/^<@!?(\d{17,20})>$/) || text.match(/^(\d{17,20})$/);
+  return match ? match[1] : null;
+}
+
+async function handleNukeCommand(message, args) {
   if (!config.antinuke.ownerIds.includes(message.author.id)) return;
 
-  if (argument === 'on' || argument === 'off') {
-    setAntinukeEnabled(argument === 'on');
-  } else if (argument) {
-    await message.reply('Use ,n on or ,n off.');
+  const sub = args[0] ? args[0].toLowerCase() : undefined;
+
+  if (sub === 'wl') {
+    const userId = extractUserId(args[1]);
+    if (!userId) {
+      await message.reply('Use ,anuke wl followed by a mention or user ID.');
+      return;
+    }
+
+    const added = toggleWhitelist(userId);
+    await message.reply({
+      content: added
+        ? `<@${userId}> was added to the antinuke whitelist.`
+        : `<@${userId}> was removed from the antinuke whitelist.`,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+
+  if (sub === 'on' || sub === 'off') {
+    setAntinukeEnabled(sub === 'on');
+  } else if (sub) {
+    await message.reply('Use ,anuke on, ,anuke off or ,anuke wl <user>.');
     return;
   }
 
@@ -53,10 +83,11 @@ client.on('messageCreate', async (message) => {
 
   if (!message.content.startsWith(',')) return;
 
-  const [command, argument] = message.content.trim().toLowerCase().split(/\s+/);
-  if (command === ',n' || command === ',nuke') {
+  const [command, ...args] = message.content.trim().split(/\s+/);
+  const lowered = command.toLowerCase();
+  if (lowered === ',anuke' || lowered === ',antinuke') {
     try {
-      await handleNukeCommand(message, argument);
+      await handleNukeCommand(message, args);
     } catch (err) {
       console.error(err);
     }
