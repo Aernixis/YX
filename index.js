@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, MessageFlags } = require('discord.js');
 const config = require('./config');
 const { sendTicketPanel, handleTicketInteraction } = require('./ticketSystem');
