@@ -329,7 +329,7 @@ async function createTicketChannel(interaction, type, choice) {
       .setColor(typeConfig.color);
 
     await channel.send({
-      content: `<@&${typeConfig.pingRoleId}> ${user}`,
+      content: `<@&${(choice && choice.pingRoleId) || typeConfig.pingRoleId}> ${user}`,
       embeds: [welcomeEmbed],
       components: buildTicketRow(type) ? [buildTicketRow(type)] : [],
     });
