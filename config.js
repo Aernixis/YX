@@ -1,5 +1,11 @@
+require('dotenv').config();
+
+if (!process.env.BOT_TOKEN) {
+  throw new Error('BOT_TOKEN is missing. Add it to your .env file or the server environment variables.');
+}
+
 module.exports = {
-  token: 'MTU1Mzg2NzcwNTUyMDc1MDczNg.GkpYAq.cCVCT0cCPOB8mHKBTbTtj5uqWX1iIkBuWf8CKE',
+  token: process.env.BOT_TOKEN,
   guildId: '1553686123115450389',
   ticketCategoryId: '1553847153099673673',
   archiveCategoryId: '1553847178269696080',
@@ -46,6 +52,7 @@ module.exports = {
       choices: [
         {
           key: 'eng',
+          pingRoleId: '1554073618441306122',
           label: 'English',
           description: 'Open an English staff ticket',
           emoji: '\u{1F1EC}\u{1F1E7}',
@@ -54,6 +61,7 @@ module.exports = {
         },
         {
           key: 'arab',
+          pingRoleId: '1554073712003645552',
           label: '\u0627\u0644\u0639\u0631\u0628\u064A\u0629',
           description: '\u0627\u0641\u062A\u062D \u062A\u0630\u0643\u0631\u0629 \u0625\u062F\u0627\u0631\u0629 \u0628\u0627\u0644\u0639\u0631\u0628\u064A\u0629',
           emoji: '\u{1F1F8}\u{1F1E6}',
@@ -62,6 +70,7 @@ module.exports = {
         },
         {
           key: 'rus',
+          pingRoleId: '1554073657465376788',
           label: '\u0420\u0443\u0441\u0441\u043A\u0438\u0439',
           description: '\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0440\u0443\u0441\u0441\u043A\u0438\u0439 \u0442\u0438\u043A\u0435\u0442 \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u0430',
           emoji: '\u{1F1F7}\u{1F1FA}',
