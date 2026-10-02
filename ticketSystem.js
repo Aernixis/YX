@@ -11,6 +11,8 @@ const {
 } = require('discord.js');
 const config = require('./config');
 
+console.log('[ticketSystem] loaded build grant-delete-button-v2');
+
 const creatingUsers = new Set();
 const busyChannels = new Set();
 const ephemeral = MessageFlags.Ephemeral;
@@ -403,10 +405,12 @@ async function processGrant(interaction, key) {
     .setDescription(`${member} has been given the ${grant.name} role.`)
     .setColor(0x43B581);
 
-  await interaction.reply({ embeds: [grantedEmbed] });
+  await interaction.reply({ embeds: [grantedEmbed], components: [buildDeleteRow('Delete Ticket')] });
+  console.log(`[ticket] ${grant.name} granted to ${member.displayName} by ${interaction.user.tag}, archiving ${interaction.channel.name}`);
 
   try {
     await closeTicket(interaction.channel, { announce: false });
+    console.log(`[ticket] archived ${interaction.channel.name}`);
   } catch (err) {
     console.error(err);
     await interaction
@@ -416,10 +420,6 @@ async function processGrant(interaction, key) {
       })
       .catch(() => null);
   }
-
-  await interaction
-    .editReply({ embeds: [grantedEmbed], components: [buildDeleteRow('Delete Ticket')] })
-    .catch(() => null);
 }
 
 async function closeTicket(channel, options = {}) {
@@ -443,23 +443,20 @@ async function closeTicket(channel, options = {}) {
     }
 
     const botId = channel.client.user.id;
-    for (const overwrite of channel.permissionOverwrites.cache.values()) {
+    for (const overwrite of [...channel.permissionOverwrites.cache.values()]) {
       if (overwrite.type === OverwriteType.Member && overwrite.id !== botId) {
-        await overwrite.delete('Ticket closed').catch(() => null);
+        await overwrite.delete('Ticket closed').catch((err) => console.error(err));
       }
     }
 
-    await channel.permissionOverwrites.edit(channel.guild.roles.everyone, {
-      ViewChannel: false,
-      SendMessages: false,
-    });
+    await channel.permissionOverwrites
+      .edit(channel.guild.roles.everyone, { ViewChannel: false, SendMessages: false })
+      .catch((err) => console.error(err));
 
     for (const roleId of config.allowedRoleIds) {
-      await channel.permissionOverwrites.edit(roleId, {
-        ViewChannel: true,
-        ReadMessageHistory: true,
-        SendMessages: false,
-      });
+      await channel.permissionOverwrites
+        .edit(roleId, { ViewChannel: true, ReadMessageHistory: true, SendMessages: false })
+        .catch((err) => console.error(`Could not update overwrite for role ${roleId}:`, err.message));
     }
 
     await channel.setParent(config.archiveCategoryId, { lockPermissions: false });
