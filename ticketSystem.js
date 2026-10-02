@@ -12,6 +12,7 @@ const {
 const config = require('./config');
 
 const creatingUsers = new Set();
+const busyChannels = new Set();
 const ephemeral = MessageFlags.Ephemeral;
 
 function encodeTopic(ownerId, type, choiceKey) {
@@ -54,6 +55,22 @@ function respond(interaction, content) {
   const payload = { content, embeds: [], components: [] };
   if (interaction.deferred || interaction.replied) return interaction.editReply(payload);
   return interaction.update(payload);
+}
+
+async function withTicketLock(interaction, task) {
+  const channelId = interaction.channel.id;
+
+  if (busyChannels.has(channelId)) {
+    return interaction.reply({ content: 'This ticket is already being processed.', flags: ephemeral });
+  }
+
+  busyChannels.add(channelId);
+
+  try {
+    return await task();
+  } finally {
+    busyChannels.delete(channelId);
+  }
 }
 
 let sortChain = Promise.resolve();
@@ -328,6 +345,10 @@ async function grantRole(interaction, key) {
     return interaction.reply({ content: 'Only staff can use this button.', flags: ephemeral });
   }
 
+  return withTicketLock(interaction, () => processGrant(interaction, key));
+}
+
+async function processGrant(interaction, key) {
   const info = parseTicket(interaction.channel);
   if (!info) {
     return interaction.reply({ content: 'Could not resolve the ticket owner.', flags: ephemeral });
@@ -346,6 +367,20 @@ async function grantRole(interaction, key) {
   const addIds = [...(grant.roleIds || [])];
   if (grant.byChoice && info.choiceKey && grant.byChoice[info.choiceKey]) {
     addIds.push(grant.byChoice[info.choiceKey]);
+  }
+
+  if (addIds.length && addIds.every((roleId) => member.roles.cache.has(roleId))) {
+    return interaction.reply({
+      content: `${member.displayName} already has the ${grant.name} role.`,
+      flags: ephemeral,
+    });
+  }
+
+  if (isTicketClosed(interaction.channel)) {
+    return interaction.reply({
+      content: 'This ticket is already closed, so no more roles can be granted.',
+      flags: ephemeral,
+    });
   }
 
   const reason = `Granted by ${interaction.user.tag}`;
@@ -368,24 +403,23 @@ async function grantRole(interaction, key) {
     .setDescription(`${member} has been given the ${grant.name} role.`)
     .setColor(0x43B581);
 
-  await interaction.reply({
-    embeds: [grantedEmbed],
-    components: [buildDeleteRow('Delete Ticket')],
-  });
+  await interaction.reply({ embeds: [grantedEmbed] });
 
-  if (!isTicketClosed(interaction.channel)) {
-    try {
-      await closeTicket(interaction.channel, { announce: false });
-    } catch (err) {
-      console.error(err);
-      await interaction
-        .followUp({
-          content: `The role was granted but the ticket could not be archived: ${err.message}`,
-          flags: ephemeral,
-        })
-        .catch(() => null);
-    }
+  try {
+    await closeTicket(interaction.channel, { announce: false });
+  } catch (err) {
+    console.error(err);
+    await interaction
+      .followUp({
+        content: `The role was granted but the ticket could not be archived: ${err.message}`,
+        flags: ephemeral,
+      })
+      .catch(() => null);
   }
+
+  await interaction
+    .editReply({ embeds: [grantedEmbed], components: [buildDeleteRow('Delete Ticket')] })
+    .catch(() => null);
 }
 
 async function closeTicket(channel, options = {}) {
@@ -396,36 +430,45 @@ async function closeTicket(channel, options = {}) {
     );
   }
 
-  if (options.announce !== false) {
-    const closedEmbed = new EmbedBuilder()
-      .setTitle('Ticket Closed')
-      .setDescription('This ticket has been closed and archived. Staff can delete the channel below.')
-      .setColor(0xE53935);
+  try {
+    let notice = null;
 
-    await channel.send({ embeds: [closedEmbed], components: [buildDeleteRow()] }).catch(() => null);
-  }
+    if (options.announce !== false) {
+      const closedEmbed = new EmbedBuilder()
+        .setTitle('Ticket Closed')
+        .setDescription('This ticket has been closed and archived. Staff can delete the channel below.')
+        .setColor(0xE53935);
 
-  const botId = channel.client.user.id;
-  for (const overwrite of channel.permissionOverwrites.cache.values()) {
-    if (overwrite.type === OverwriteType.Member && overwrite.id !== botId) {
-      await overwrite.delete('Ticket closed').catch(() => null);
+      notice = await channel.send({ embeds: [closedEmbed] }).catch(() => null);
     }
-  }
 
-  await channel.permissionOverwrites.edit(channel.guild.roles.everyone, {
-    ViewChannel: false,
-    SendMessages: false,
-  });
+    const botId = channel.client.user.id;
+    for (const overwrite of channel.permissionOverwrites.cache.values()) {
+      if (overwrite.type === OverwriteType.Member && overwrite.id !== botId) {
+        await overwrite.delete('Ticket closed').catch(() => null);
+      }
+    }
 
-  for (const roleId of config.allowedRoleIds) {
-    await channel.permissionOverwrites.edit(roleId, {
-      ViewChannel: true,
-      ReadMessageHistory: true,
+    await channel.permissionOverwrites.edit(channel.guild.roles.everyone, {
+      ViewChannel: false,
       SendMessages: false,
     });
-  }
 
-  await channel.setParent(config.archiveCategoryId, { lockPermissions: false });
+    for (const roleId of config.allowedRoleIds) {
+      await channel.permissionOverwrites.edit(roleId, {
+        ViewChannel: true,
+        ReadMessageHistory: true,
+        SendMessages: false,
+      });
+    }
+
+    await channel.setParent(config.archiveCategoryId, { lockPermissions: false });
+
+    if (notice) await notice.edit({ components: [buildDeleteRow()] }).catch(() => null);
+  } catch (err) {
+    if (err && err.code === 10003) return;
+    throw err;
+  }
 }
 
 async function deleteTicketChannel(interaction) {
@@ -506,18 +549,21 @@ async function handleTicketInteraction(interaction) {
     if (isTicketClosed(interaction.channel)) {
       return interaction.reply({ content: 'This ticket is already closed.', flags: ephemeral });
     }
-    await interaction.deferReply({ flags: ephemeral });
-    try {
-      await closeTicket(interaction.channel);
-    } catch (err) {
-      console.error(err);
-      return interaction.editReply({ content: `Could not close the ticket: ${err.message}` }).catch(() => null);
-    }
-    return interaction.editReply({ content: 'Ticket closed and archived.' }).catch(() => null);
+
+    return withTicketLock(interaction, async () => {
+      await interaction.deferReply({ flags: ephemeral });
+      try {
+        await closeTicket(interaction.channel);
+      } catch (err) {
+        console.error(err);
+        return interaction.editReply({ content: `Could not close the ticket: ${err.message}` }).catch(() => null);
+      }
+      return interaction.editReply({ content: 'Ticket closed and archived.' }).catch(() => null);
+    });
   }
 
   if (id === 'ticket_delete_channel') {
-    return deleteTicketChannel(interaction);
+    return withTicketLock(interaction, () => deleteTicketChannel(interaction));
   }
 }
 
