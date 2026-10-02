@@ -9,6 +9,7 @@ module.exports = {
   guildId: '1553686123115450389',
   ticketCategoryId: '1553847153099673673',
   archiveCategoryId: '1553847178269696080',
+  lockExcludedCategoryId: '1555128162797752371',
   allowedRoleIds: [
     '1553741876060749957',
     '1553741844775436340',
