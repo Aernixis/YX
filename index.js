@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, MessageFlags } = require('discord.js');
 const config = require('./config');
 const { sendTicketPanel, handleTicketInteraction } = require('./ticketSystem');
+const { handleLockCommand } = require('./lock');
 const {
   setupAntinuke,
   setAntinukeEnabled,
@@ -118,6 +119,15 @@ client.on('messageCreate', async (message) => {
   if (lowered === ',anuke' || lowered === ',antinuke') {
     try {
       await handleNukeCommand(message, args);
+    } catch (err) {
+      console.error(err);
+    }
+    return;
+  }
+
+  if (lowered === ',l' || lowered === ',ul') {
+    try {
+      await handleLockCommand(message, args, lowered === ',l');
     } catch (err) {
       console.error(err);
     }
