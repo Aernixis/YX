@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, MessageFlags } = require('discord.js');
 const config = require('./config');
-const { sendTicketPanel, handleTicketInteraction } = require('./ticketSystem');
+const { sendTicketPanel, handleTicketInteraction, repairTicketAccess } = require('./ticketSystem');
 const { handleLockCommand } = require('./lock');
 const {
   setupAntinuke,
@@ -90,9 +90,16 @@ async function handleNukeCommand(message, args) {
   await message.reply(`Antinuke is ${isAntinukeEnabled() ? 'on' : 'off'}.`);
 }
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
   setupAntinuke(client);
+
+  try {
+    const guild = await client.guilds.fetch(config.guildId);
+    await repairTicketAccess(guild);
+  } catch (err) {
+    console.error(err);
+  }
 });
 
 client.on('interactionCreate', async (interaction) => {
