@@ -8,16 +8,38 @@ const actionState = new Map();
 const AUDIT_MAX_AGE_MS = 10000;
 let botId = null;
 
-function loadEnabled() {
+function loadState() {
   try {
     const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-    return typeof data.enabled === 'boolean' ? data.enabled : config.antinuke.enabled;
+    return {
+      enabled: typeof data.enabled === 'boolean' ? data.enabled : config.antinuke.enabled,
+      whitelist: Array.isArray(data.whitelist) ? data.whitelist.map(String) : [],
+      permed: Array.isArray(data.permed) ? data.permed.map(String) : [],
+    };
   } catch (err) {
-    return config.antinuke.enabled;
+    return { enabled: config.antinuke.enabled, whitelist: [], permed: [] };
   }
 }
 
-let enabled = loadEnabled();
+const initialState = loadState();
+let enabled = initialState.enabled;
+const dynamicWhitelist = new Set(initialState.whitelist);
+const permedUsers = new Set(initialState.permed);
+
+function saveState() {
+  try {
+    fs.writeFileSync(
+      STATE_FILE,
+      JSON.stringify({
+        enabled,
+        whitelist: [...dynamicWhitelist],
+        permed: [...permedUsers],
+      })
+    );
+  } catch (err) {
+    console.error(err);
+  }
+}
 
 function isAntinukeEnabled() {
   return enabled;
@@ -26,12 +48,46 @@ function isAntinukeEnabled() {
 function setAntinukeEnabled(value) {
   enabled = value;
   actionState.clear();
+  saveState();
+}
 
-  try {
-    fs.writeFileSync(STATE_FILE, JSON.stringify({ enabled }));
-  } catch (err) {
-    console.error(err);
+function toggleWhitelist(userId) {
+  const id = String(userId);
+  let added;
+  if (dynamicWhitelist.has(id)) {
+    dynamicWhitelist.delete(id);
+    added = false;
+  } else {
+    dynamicWhitelist.add(id);
+    added = true;
   }
+  actionState.forEach((_, key) => {
+    if (key.endsWith(`:${id}`)) actionState.delete(key);
+  });
+  saveState();
+  return added;
+}
+
+function isWhitelistedUser(userId) {
+  return dynamicWhitelist.has(String(userId));
+}
+
+function togglePerm(userId) {
+  const id = String(userId);
+  let added;
+  if (permedUsers.has(id)) {
+    permedUsers.delete(id);
+    added = false;
+  } else {
+    permedUsers.add(id);
+    added = true;
+  }
+  saveState();
+  return added;
+}
+
+function isPermed(userId) {
+  return permedUsers.has(String(userId));
 }
 
 function sleep(ms) {
@@ -43,6 +99,7 @@ function isWhitelisted(guild, userId, member) {
   if (guild.ownerId === userId) return true;
   if (config.antinuke.ownerIds.includes(userId)) return true;
   if (config.antinuke.whitelistUserIds.includes(userId)) return true;
+  if (dynamicWhitelist.has(String(userId))) return true;
 
   if (member) {
     for (const roleId of config.antinuke.whitelistRoleIds) {
@@ -284,4 +341,12 @@ function setupAntinuke(client) {
   });
 }
 
-module.exports = { setupAntinuke, setAntinukeEnabled, isAntinukeEnabled };
+module.exports = {
+  setupAntinuke,
+  setAntinukeEnabled,
+  isAntinukeEnabled,
+  toggleWhitelist,
+  isWhitelistedUser,
+  togglePerm,
+  isPermed,
+};
