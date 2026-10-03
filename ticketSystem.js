@@ -219,7 +219,22 @@ async function sendTicketPanel(channel, type) {
   await channel.send({ embeds: [embed], components: [buildPanelRow(type)] });
 }
 
-function buildTicketPermissionOverwrites(guild, userId) {
+function getStaffViewRoleIds(type, choice) {
+  const typeConfig = config.ticketTypes[type];
+  const ids = new Set(config.allowedRoleIds);
+  if (typeConfig && typeConfig.pingRoleId) ids.add(typeConfig.pingRoleId);
+  if (choice && choice.pingRoleId) ids.add(choice.pingRoleId);
+  return [...ids];
+}
+
+function getChoiceFromInfo(info) {
+  if (!info || !info.choiceKey) return null;
+  const typeConfig = config.ticketTypes[info.type];
+  if (!typeConfig || !typeConfig.choices) return null;
+  return typeConfig.choices.find((c) => c.key === info.choiceKey) || null;
+}
+
+function buildTicketPermissionOverwrites(guild, userId, type, choice) {
   const overwrites = [
     {
       id: guild.roles.everyone.id,
@@ -235,7 +250,7 @@ function buildTicketPermissionOverwrites(guild, userId) {
     },
   ];
 
-  for (const roleId of config.allowedRoleIds) {
+  for (const roleId of getStaffViewRoleIds(type, choice)) {
     overwrites.push({
       id: roleId,
       allow: [
@@ -312,7 +327,7 @@ async function createTicketChannel(interaction, type, choice) {
       type: ChannelType.GuildText,
       parent: config.ticketCategoryId,
       topic: encodeTopic(user.id, type, choice ? choice.key : null),
-      permissionOverwrites: buildTicketPermissionOverwrites(guild, user.id),
+      permissionOverwrites: buildTicketPermissionOverwrites(guild, user.id, type, choice),
     });
 
     const lines = [];
@@ -453,7 +468,12 @@ async function closeTicket(channel, options = {}) {
       .edit(channel.guild.roles.everyone, { ViewChannel: false, SendMessages: false })
       .catch((err) => console.error(err));
 
-    for (const roleId of config.allowedRoleIds) {
+    const closedInfo = parseTicket(channel);
+    const closedRoleIds = closedInfo
+      ? getStaffViewRoleIds(closedInfo.type, getChoiceFromInfo(closedInfo))
+      : config.allowedRoleIds;
+
+    for (const roleId of closedRoleIds) {
       await channel.permissionOverwrites
         .edit(roleId, { ViewChannel: true, ReadMessageHistory: true, SendMessages: false })
         .catch((err) => console.error(`Could not update overwrite for role ${roleId}:`, err.message));
@@ -487,6 +507,38 @@ async function deleteTicketChannel(interaction) {
       .editReply({ content: 'Failed to delete the channel. Check the bot has Manage Channels permission.' })
       .catch(() => null);
   }
+}
+
+async function repairTicketAccess(guild) {
+  const channels = await guild.channels.fetch().catch(() => null);
+  if (!channels) return;
+
+  let repaired = 0;
+
+  for (const channel of channels.values()) {
+    if (!channel || channel.type !== ChannelType.GuildText) continue;
+    if (channel.parentId !== config.ticketCategoryId) continue;
+
+    const info = parseTicket(channel);
+    if (!info) continue;
+
+    const roleIds = getStaffViewRoleIds(info.type, getChoiceFromInfo(info));
+
+    for (const roleId of roleIds) {
+      const existing = channel.permissionOverwrites.cache.get(roleId);
+      const hasView = existing && existing.allow.has(PermissionsBitField.Flags.ViewChannel);
+      if (hasView) continue;
+
+      await channel.permissionOverwrites
+        .edit(roleId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true })
+        .then(() => {
+          repaired += 1;
+        })
+        .catch((err) => console.error(`Could not repair access for role ${roleId} in ${channel.name}:`, err.message));
+    }
+  }
+
+  if (repaired) console.log(`[ticket] repaired ${repaired} staff access overwrites on open tickets`);
 }
 
 async function handleTicketInteraction(interaction) {
@@ -567,6 +619,7 @@ async function handleTicketInteraction(interaction) {
 module.exports = {
   sendTicketPanel,
   handleTicketInteraction,
+  repairTicketAccess,
   closeTicket,
   createTicketChannel,
   sortTicketChannels,
