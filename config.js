@@ -15,6 +15,7 @@ module.exports = {
     '1553741844775436340',
     '1553741777603924010',
     '1553732191480188948',
+    '1553752363590750218',
   ],
   panelGifUrl: 'https://cdn.discordapp.com/attachments/1553686125334499372/1553824421888659576/0CC31915-6394-481F-BCA4-BA25E2BAFCA8.gif?ex=6abaa742&is=6ab955c2&hm=8ee169c01476adef9ce07d275890f8c7c894d00fae24a35d65a36f6b5eb12a09&',
   ticketOrder: ['verify', 'raid', 'staff'],
