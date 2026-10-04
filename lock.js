@@ -23,10 +23,27 @@ async function setLocked(channel, lock) {
   const guild = channel.guild;
 
   if (lock) {
-    for (const roleId of getBypassRoles(guild)) {
+    const bypass = getBypassRoles(guild);
+
+    for (const roleId of bypass) {
       await channel.permissionOverwrites.edit(roleId, {
         SendMessages: true,
         SendMessagesInThreads: true,
+      });
+    }
+
+    const keep = new Set([...bypass, guild.roles.everyone.id, guild.members.me && guild.members.me.id]);
+    const sendFlags = [
+      PermissionsBitField.Flags.SendMessages,
+      PermissionsBitField.Flags.SendMessagesInThreads,
+    ];
+
+    for (const overwrite of channel.permissionOverwrites.cache.values()) {
+      if (keep.has(overwrite.id)) continue;
+      if (!sendFlags.some((flag) => overwrite.allow.has(flag))) continue;
+      await overwrite.edit({
+        SendMessages: null,
+        SendMessagesInThreads: null,
       });
     }
   }
