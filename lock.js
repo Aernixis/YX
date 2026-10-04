@@ -14,9 +14,26 @@ function canUse(message) {
   );
 }
 
+function getBypassRoles(guild) {
+  const ids = new Set(config.lockBypassRoleIds);
+  return [...ids].filter((id) => guild.roles.cache.has(id));
+}
+
 async function setLocked(channel, lock) {
-  await channel.permissionOverwrites.edit(channel.guild.roles.everyone, {
+  const guild = channel.guild;
+
+  if (lock) {
+    for (const roleId of getBypassRoles(guild)) {
+      await channel.permissionOverwrites.edit(roleId, {
+        SendMessages: true,
+        SendMessagesInThreads: true,
+      });
+    }
+  }
+
+  await channel.permissionOverwrites.edit(guild.roles.everyone, {
     SendMessages: lock ? false : null,
+    SendMessagesInThreads: lock ? false : null,
   });
 }
 
