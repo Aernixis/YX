@@ -54,6 +54,21 @@ async function setLocked(channel, lock) {
   });
 }
 
+function findLeaks(channel) {
+  const guild = channel.guild;
+  const bypass = new Set(getBypassRoles(guild));
+  const leaks = [];
+  for (const role of guild.roles.cache.values()) {
+    if (role.id === guild.roles.everyone.id || bypass.has(role.id) || role.managed) continue;
+    const perms = channel.permissionsFor(role);
+    if (perms && perms.has(PermissionsBitField.Flags.SendMessages)) {
+      const admin = role.permissions.has(PermissionsBitField.Flags.Administrator);
+      leaks.push(admin ? `${role.name} (Administrator)` : role.name);
+    }
+  }
+  return leaks;
+}
+
 async function handleLockCommand(message, args, lock) {
   if (!canUse(message)) return;
 
@@ -76,7 +91,14 @@ async function handleLockCommand(message, args, lock) {
     const status = await message.reply(`${lock ? 'Locking' : 'Unlocking'} this channel...`);
     try {
       await setLocked(channel, lock);
-      await status.edit(`Channel ${past}.`).catch(() => null);
+      let text = `Channel ${past}.`;
+      if (lock) {
+        const leaks = findLeaks(channel);
+        if (leaks.length) {
+          text += ` Still able to send: ${leaks.join(', ').slice(0, 1500)}`;
+        }
+      }
+      await status.edit(text).catch(() => null);
     } catch (err) {
       console.error(err);
       await status.edit(`Failed to ${lock ? 'lock' : 'unlock'} this channel: ${err.message}`).catch(() => null);
