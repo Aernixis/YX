@@ -147,4 +147,4 @@ async function handleLockCommand(message, args, lock) {
   await status.edit(result).catch(() => null);
 }
 
-module.exports = { handleLockCommand };
+module.exports = { handleLockCommand, setLocked, canUse };
