@@ -3,6 +3,7 @@ const { Client, GatewayIntentBits, Partials, MessageFlags } = require('discord.j
 const config = require('./config');
 const { sendTicketPanel, handleTicketInteraction, repairTicketAccess } = require('./ticketSystem');
 const { handleLockCommand } = require('./lock');
+const { handleRaidLockCommand } = require('./raidlock');
 const {
   setupAntinuke,
   setAntinukeEnabled,
@@ -135,6 +136,15 @@ client.on('messageCreate', async (message) => {
   if (lowered === ',l' || lowered === ',ul') {
     try {
       await handleLockCommand(message, args, lowered === ',l');
+    } catch (err) {
+      console.error(err);
+    }
+    return;
+  }
+
+  if (lowered === ',raidlock' || lowered === ',rl') {
+    try {
+      await handleRaidLockCommand(message);
     } catch (err) {
       console.error(err);
     }
