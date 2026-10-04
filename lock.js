@@ -1,4 +1,4 @@
-const { ChannelType, PermissionsBitField } = require('discord.js');
+const { ChannelType, OverwriteType, PermissionsBitField } = require('discord.js');
 const config = require('./config');
 
 const LOCKABLE_TYPES = new Set([
@@ -7,6 +7,13 @@ const LOCKABLE_TYPES = new Set([
   ChannelType.GuildForum,
 ]);
 
+const SEND_FLAGS = [
+  PermissionsBitField.Flags.SendMessages,
+  PermissionsBitField.Flags.SendMessagesInThreads,
+];
+
+const CONCURRENCY = 5;
+
 function canUse(message) {
   if (config.antinuke.ownerIds.includes(message.author.id)) return true;
   return Boolean(
@@ -14,59 +21,71 @@ function canUse(message) {
   );
 }
 
-function getBypassRoles(guild) {
-  const ids = new Set(config.lockBypassRoleIds);
-  return [...ids].filter((id) => guild.roles.cache.has(id));
+function buildOverwrites(channel, lock) {
+  const guild = channel.guild;
+  const everyoneId = guild.roles.everyone.id;
+  const bypass = new Set(config.lockBypassRoleIds.filter((id) => guild.roles.cache.has(id)));
+  const botId = guild.members.me ? guild.members.me.id : null;
+
+  const map = new Map();
+  for (const overwrite of channel.permissionOverwrites.cache.values()) {
+    map.set(overwrite.id, {
+      id: overwrite.id,
+      type: overwrite.type,
+      allow: new PermissionsBitField(overwrite.allow),
+      deny: new PermissionsBitField(overwrite.deny),
+    });
+  }
+
+  const entry = (id) => {
+    if (!map.has(id)) {
+      map.set(id, {
+        id,
+        type: OverwriteType.Role,
+        allow: new PermissionsBitField(),
+        deny: new PermissionsBitField(),
+      });
+    }
+    return map.get(id);
+  };
+
+  if (lock) {
+    for (const id of bypass) {
+      const e = entry(id);
+      e.allow.add(...SEND_FLAGS);
+      e.deny.remove(...SEND_FLAGS);
+    }
+
+    for (const e of map.values()) {
+      if (e.id === everyoneId || e.id === botId || bypass.has(e.id)) continue;
+      if (SEND_FLAGS.some((flag) => e.allow.has(flag))) e.allow.remove(...SEND_FLAGS);
+    }
+
+    const everyone = entry(everyoneId);
+    everyone.allow.remove(...SEND_FLAGS);
+    everyone.deny.add(...SEND_FLAGS);
+  } else if (map.has(everyoneId)) {
+    const everyone = map.get(everyoneId);
+    everyone.allow.remove(...SEND_FLAGS);
+    everyone.deny.remove(...SEND_FLAGS);
+  }
+
+  return [...map.values()];
 }
 
 async function setLocked(channel, lock) {
-  const guild = channel.guild;
-
-  if (lock) {
-    const bypass = getBypassRoles(guild);
-
-    for (const roleId of bypass) {
-      await channel.permissionOverwrites.edit(roleId, {
-        SendMessages: true,
-        SendMessagesInThreads: true,
-      });
-    }
-
-    const keep = new Set([...bypass, guild.roles.everyone.id, guild.members.me && guild.members.me.id]);
-    const sendFlags = [
-      PermissionsBitField.Flags.SendMessages,
-      PermissionsBitField.Flags.SendMessagesInThreads,
-    ];
-
-    for (const overwrite of channel.permissionOverwrites.cache.values()) {
-      if (keep.has(overwrite.id)) continue;
-      if (!sendFlags.some((flag) => overwrite.allow.has(flag))) continue;
-      await overwrite.edit({
-        SendMessages: null,
-        SendMessagesInThreads: null,
-      });
-    }
-  }
-
-  await channel.permissionOverwrites.edit(guild.roles.everyone, {
-    SendMessages: lock ? false : null,
-    SendMessagesInThreads: lock ? false : null,
-  });
+  await channel.permissionOverwrites.set(buildOverwrites(channel, lock));
 }
 
-function findLeaks(channel) {
-  const guild = channel.guild;
-  const bypass = new Set(getBypassRoles(guild));
-  const leaks = [];
-  for (const role of guild.roles.cache.values()) {
-    if (role.id === guild.roles.everyone.id || bypass.has(role.id) || role.managed) continue;
-    const perms = channel.permissionsFor(role);
-    if (perms && perms.has(PermissionsBitField.Flags.SendMessages)) {
-      const admin = role.permissions.has(PermissionsBitField.Flags.Administrator);
-      leaks.push(admin ? `${role.name} (Administrator)` : role.name);
+async function runPool(items, worker) {
+  const queue = [...items];
+  const runners = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      await worker(item);
     }
-  }
-  return leaks;
+  });
+  await Promise.all(runners);
 }
 
 async function handleLockCommand(message, args, lock) {
@@ -88,20 +107,12 @@ async function handleLockCommand(message, args, lock) {
       return;
     }
 
-    const status = await message.reply(`${lock ? 'Locking' : 'Unlocking'} this channel...`);
     try {
       await setLocked(channel, lock);
-      let text = `Channel ${past}.`;
-      if (lock) {
-        const leaks = findLeaks(channel);
-        if (leaks.length) {
-          text += ` Still able to send: ${leaks.join(', ').slice(0, 1500)}`;
-        }
-      }
-      await status.edit(text).catch(() => null);
+      await message.reply(lock ? 'Locked.' : 'Unlocked.');
     } catch (err) {
       console.error(err);
-      await status.edit(`Failed to ${lock ? 'lock' : 'unlock'} this channel: ${err.message}`).catch(() => null);
+      await message.reply(`Failed to ${lock ? 'lock' : 'unlock'} this channel: ${err.message}`).catch(() => null);
     }
     return;
   }
@@ -120,7 +131,7 @@ async function handleLockCommand(message, args, lock) {
 
   let done = 0;
   let failed = 0;
-  for (const channel of targets.values()) {
+  await runPool([...targets.values()], async (channel) => {
     try {
       await setLocked(channel, lock);
       done += 1;
@@ -128,7 +139,7 @@ async function handleLockCommand(message, args, lock) {
       console.error(err);
       failed += 1;
     }
-  }
+  });
 
   const result = failed
     ? `${done} channels ${past}, ${failed} failed.`
