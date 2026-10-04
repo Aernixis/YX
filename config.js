@@ -10,6 +10,8 @@ module.exports = {
   ticketCategoryId: '1553847153099673673',
   archiveCategoryId: '1553847178269696080',
   lockExcludedCategoryId: '1555128162797752371',
+  raidLockChannelId: '1553743990161932482',
+  raidChannelId: '1553726606122426568',
   lockBypassRoleIds: [
     '1553808721703075860',
     '1553742179032109188',
